@@ -17,13 +17,14 @@ Installation
 Using install.csh
 -----------------
 
-Install Lagranto on a Linux platform:   
+Compiling the Lagranto code on a Linux platform:   
 
 .. code:: bash
 
-   ./code/install.csh
-   install.sh [lib|core|all|clean|test]
-  
+   >./code/install.csh [lib|core|all|clean|test]
+
+Fortran compiler *PGI* is used.
+
 =========
 Tutorial
 =========
@@ -31,13 +32,15 @@ Tutorial
 1 Meteorological Data
 ----------------------
 
-The meteorological fields are on netCDF files named *latlon.current.YYYY-MM-DD_00:00:00.nc* containing 4 timesteps (every 6 hour: 00, 06, 12, 18).
-Needed fields are:
-- zonal wind (uzonal, in m/s)
-- meridional wind (umeridional, in m/s)
-- vertical wind (w, in m/s)
-- geometric height (height, in m)
-- additional fields (temperature, specific humidity, ..) to be traced along the trajectories.
+The meteorological fields are on netCDF files named *latlon.current.YYYY-MM-DD_00:00:00.nc*.   
+The file stores 4 timesteps (every 6 hour: 00, 06, 12, 18).   
+   
+Needed fields are:   
+ - zonal wind (uzonal, in m/s)   
+ - meridional wind (umeridional, in m/s)   
+ - vertical wind (w, in m/s)   
+ - geometric height (height, in m)   
+ - additional fields (temperature, specific humidity, ..) to be traced along the trajectories.   
 
 2 Starting Position
 --------------------
@@ -102,7 +105,8 @@ The staring positions are taken from *startf_z* and the output is written to *ls
 4.1 Blocking Trajectory Calculation
 ------------------------------------------
 
-The shell script *script/run_lagranto.sh* provides an example on calculating backward trajectories starting from blocking anticyclones. Starting position are taken from startfiles named *startf_YYYYMMDD_HH_FLAG*. These startfiles are created using the output "FLAG" from the Atmospheric blocking tracking index `ConTrack <https://github.com/steidani/ConTrack>`_.
+The shell script *script/run_lagranto.sh* provides an example on calculating backward trajectories starting from blocking anticyclones.   
+Starting position are taken from startfiles named *startf_YYYYMMDD_HH_FLAG*. These startfiles are created using the output "FLAG" from the Atmospheric blocking tracking index `ConTrack <https://github.com/steidani/ConTrack>`_.
 
 5 Analysis and Platting of Trajectories
 ---------------------------------------
