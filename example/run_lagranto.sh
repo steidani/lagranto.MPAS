@@ -1,17 +1,13 @@
 #!/bin/bash
 
 module load dyn_tools
-MODEL=mpas; export MODEL
-LAGRANTO=/home/steidani/phd/mpas_lagranto/code/prog
-which caltra
-which seltra
 module list
+LAGRANTO=/home/steidani/phd/mpas_lagranto/code/prog
 echo ${LAGRANTO}
 
 #=======
-# define paths
-#pdir=/net/rossby/lhome/sprenger/lagranto.mpas/josh.alland    
-pdir=/net/thermo/atmosdyn/steidani/mpas/data/MPAS_lagranto
+# define paths  
+pdir=/net/thermo/atmosdyn/steidani/mpas/data/cdf
 
 #=======
 # create link to files
@@ -25,4 +21,4 @@ EOF
 
 # calculate trajectories
 echo " *********************** calc traj ***********************"
-${LAGRANTO}/caltra startf_z -72 mpas.backward.1 -ref 19881231_1800 -o 360
+${LAGRANTO}/caltra startf_z 72 lsl_forward.1 -ref 19881228_1800 -o 360

@@ -6,7 +6,7 @@ This is the version of LAGRANTO used to compute air-parcel trajectories based on
 
 The Lagrangian analysis tool LAGRANTO is widely used in the atmospheric sciences, for instance, to identify flow structures in extratropical cyclones (e.g., warm conveyor belts), long-range transport pathways of moisture, or to study the physical processes underlying the formation of potential vorticity anomalies.
 
-LAGRANTO is develped at the `Institute for Atmospheric and Climate Science <https://iac.ethz.ch/group/atmospheric-dynamics.html>`_ at ETH Zurich by Dr. Michael Sprenger and Prof. Heini Wernli.    
+LAGRANTO is developed at the `Institute for Atmospheric and Climate Science <https://iac.ethz.ch/group/atmospheric-dynamics.html>`_ at ETH Zurich by Dr. Michael Sprenger and Prof. Heini Wernli.    
 
 For more information see `http://www.lagranto.ethz.ch <http://www.lagranto.ethz.ch>`_.
 
