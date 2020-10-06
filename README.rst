@@ -19,8 +19,10 @@ Using install.csh
 
 Install Lagranto on a Linux platform:   
 
-*> code/install.csh*
-  *install.sh [lib|core|all|clean|test]*
+.. code:: bash
+
+   ./code/install.csh
+   install.sh [lib|core|all|clean|test]
   
 =========
 Tutorial
@@ -41,11 +43,13 @@ Needed fields are:
 --------------------
 
 Starting positions are specified in a file *startf*:  
- 
-*> more example/startf_z*
-  *0.00	-35	47	1000.00*
-  *0.00	-35	47	1500.00*
-  *0.00	-35	47	1000.00*   
+
+.. code:: bash
+
+   > more example/startf_z
+   0.00	-35	47	1000.00 
+   0.00	-35	47	1500.00   
+   0.00	-35	47	1000.00   
   
 The different columns are: time (relative to initation date), longitude, latitude, height (in m).
 
@@ -54,8 +58,10 @@ The different columns are: time (relative to initation date), longitude, latitud
 
 Meteorological fields (in addition to time, lon, lat, z) to be traced are listed in a file *tracevars*:   
 
-*> more example/tracevars*
-  *temperature 1. P*
+.. code:: bash
+
+   > more example/tracevars
+   temperature 1. P
   
 The different columns are: name, scaling factor, location of field (P = Primary). In this case, P is latlon.current.YYYY-MM-DD_00:00:00.nc*. 
 
@@ -64,29 +70,33 @@ The different columns are: name, scaling factor, location of field (P = Primary)
 
 In this example, the trajectories are calculated 3 days (72) forward in time, stored every 6 h (-o 360), with starting date (-ref) 18 UTC, 12 December 1988. The command is:   
 
-*> caltra startf_z 72 lsl_forward.1 -ref 19881228_1800 -o 360*
+.. code:: bash
+
+   > caltra startf_z 72 lsl_forward.1 -ref 19881228_1800 -o 360
 
 The staring positions are taken from *startf_z* and the output is written to *lsl_forward.1*.
 
-*> more example/lsl_forward.1*
-  *Reference date 19881228_1800 / Time range    4320 min*
+.. code:: bash
+
+   > more example/lsl_forward.1
+  Reference date 19881228_1800 / Time range    4320 min
  
-   *time       lon      lat     z temperatu*
-  *------------------------------------------*
+  time       lon      lat     z temperatu
+  ------------------------------------------
  
-   *0.00   325.000   46.000  1500   274.301*
-   *6.00   325.637   49.153  2722   266.827*
-  *12.00   326.411   52.902  4382   253.898*
-  *18.00   327.010   56.194  5748   242.070*
-  *24.00   328.731   60.388  7045   228.991*
-  *30.00   334.821   65.331  7559   222.908*
-  *36.00   349.509   67.713  7301   225.142*
-  *42.00     8.087   63.862  6967   227.987*
-  *48.00    17.993   56.261  6932   228.178*
-  *54.00    22.249   49.719  6931   228.324*
-  *60.00    25.509   45.767  7007   227.827*
-  *66.00    29.933   44.689  6997   227.905*
-  *72.00    35.660   47.792  6794   228.377*
+   0.00   325.000   46.000  1500   274.301   
+   6.00   325.637   49.153  2722   266.827   
+  12.00   326.411   52.902  4382   253.898   
+  18.00   327.010   56.194  5748   242.070   
+  24.00   328.731   60.388  7045   228.991   
+  30.00   334.821   65.331  7559   222.908   
+  36.00   349.509   67.713  7301   225.142   
+  42.00     8.087   63.862  6967   227.987   
+  48.00    17.993   56.261  6932   228.178   
+  54.00    22.249   49.719  6931   228.324   
+  60.00    25.509   45.767  7007   227.827   
+  66.00    29.933   44.689  6997   227.905   
+  72.00    35.660   47.792  6794   228.377   
   
 
 4.1 Blocking Trajectory Calculation
