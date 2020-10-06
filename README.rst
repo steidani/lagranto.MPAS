@@ -32,10 +32,11 @@ Tutorial
 1 Meteorological Data
 ----------------------
 
-The meteorological fields are on netCDF files named *latlon.current.YYYY-MM-DD_00:00:00.nc*.   
-The file stores 4 timesteps (every 6 hour: 00, 06, 12, 18).   
+The meteorological fields are on netCDF files named *latlon.current.YYYY-MM-DD_00:00:00.nc* 
+containing 4 timesteps (every 6 hour: 00, 06, 12, 18).   
    
 Needed fields are:   
+
  - zonal wind (uzonal, in m/s)   
  - meridional wind (umeridional, in m/s)   
  - vertical wind (w, in m/s)   
@@ -50,9 +51,9 @@ Starting positions are specified in a file *startf*:
 .. code:: bash
 
    > more example/startf_z
-   0.00	-35	47	1000.00 
-   0.00	-35	47	1500.00   
-   0.00	-35	47	1000.00   
+   0.00    -35    47    1000.00 
+   0.00    -35    47    1500.00   
+   0.00    -35    47    1000.00   
   
 The different columns are: time (relative to initation date), longitude, latitude, height (in m).
 
@@ -71,7 +72,7 @@ The different columns are: name, scaling factor, location of field (P = Primary)
 4 Trajectory Calculation
 -------------------------
 
-In this example, the trajectories are calculated 3 days (72) forward in time, stored every 6 h (-o 360), with starting date (-ref) 18 UTC, 12 December 1988. The command is:   
+In this example, the trajectories are calculated 3 days (72) forward in time, stored every 6 h (-o 360), with starting date (-ref) 18 UTC, 28 December 1988. The command is:   
 
 .. code:: bash
 
