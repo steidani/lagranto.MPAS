@@ -1,0 +1,1450 @@
+      PROGRAM caltra
+
+C     ********************************************************************
+C     *                                                                  *
+C     * Calculates trajectories                                          *
+C     *                                                                  *
+C     *	Heini Wernli	   first version:	April 1993                   *
+C     * Michael Sprenger   major upgrade:       2008-2009                *
+c     * Michael Sprenger   on-the-fly version   2016 / 2017              *
+C     *                                                                  *
+C     ********************************************************************
+
+      implicit none
+      
+c     --------------------------------------------------------------------
+c     Declaration of parameters
+c     --------------------------------------------------------------------
+
+c     Maximum number of levels for input files
+      integer   nlevmax
+      parameter	(nlevmax=100)
+
+c     Maximum number of input files (dates, length of trajectories)
+      integer   ndatmax
+      parameter	(ndatmax=5000)
+
+c     Numerical epsilon (for float comparison)
+      real      eps
+      parameter (eps=0.00000001)
+
+c     Distance in m between 2 lat circles 
+      real	deltay
+      parameter	(deltay=1.112E5)
+
+c     Number of iterations for iterative Euler scheme
+      integer   numit
+      parameter (numit=3)
+
+c     Jump flag (=1: trajectory moving into topography will be lifted)
+      integer   jflag
+      parameter (jflag = 1)
+
+c     Timecheck ('yes' enforces an explicit check of the time on P files)
+      character*80 timecheck
+      parameter    (timecheck='no')
+
+c     Periodic/hemispaheric data domain (0: none) and periodicity
+      real        per
+      parameter   (per=360.)
+      integer     hem
+      parameter   (hem = 1 )
+
+c     Fplane mode (fflag=1: f-plane with fixed latitude)
+      integer    fflag
+      parameter  (fflag = 0)
+      real       lat_fixed
+      parameter  (lat_fixed = 45.)
+
+c     Balloon mode (0:none, otherwise value of ballon speed in m/s)
+      real        balloon
+      parameter   (balloon = 0.)
+
+c     Scaling factor for vertical wind speed (must be in [m/s])
+      real        wfactor
+      parameter   (wfactor=1.)
+      
+c     Name of the tracevar file
+      character*180 tracevar
+      parameter    (tracevar = 'tracevars' )
+
+c     --------------------------------------------------------------------
+c     Declaration of variables
+c     --------------------------------------------------------------------
+
+c     Input parameters
+      integer                                fbflag          ! Flag for forward/backward mode
+      integer                                numdat          ! Number of input files
+      character*20                           dat(ndatmax)    ! Dates of input files
+      integer                                itime(ndatmax)  ! Time corresponding to dat (in min)
+      integer                                timeinc         ! Time increment between input files (in minutes)
+      integer                                ntra            ! Number of trajectories
+      character*180                          cdfname         ! Name of output files
+      integer                                ts              ! Time step
+      integer                                deltout         ! Output time interval (in minutes)
+      character*180                          strname         ! File with start positions
+      character*80                           dateformat      ! Format of the datestring YYYYMMDD_HH or YYYYMMDD_HHMM
+      character*80                           prefix          ! File name prefix
+      character*80                           suffix          ! File name appendix
+      character*80                           constfile       ! Name of constants file
+
+c     Trajectories
+      integer                                ncol            ! Number of columns for insput trajectories
+      real,allocatable, dimension (:,:,:) :: trainp          ! Input start coordinates (ntra,1,ncol)
+      real,allocatable, dimension (:,:,:) :: traout          ! Output trajectories (ntra,ntim,4)
+      integer                                reftime(6)      ! Reference date
+      integer                                cosmotime(6)      ! COSMO start date
+      character*80                           vars(200)       ! Field names
+      real,allocatable, dimension (:)     :: xx0,yy0,pp0     ! Position of air parcels
+      integer,allocatable, dimension (:)  :: tt0             ! Time of air parcel
+      integer,allocatable, dimension(:)   :: active          ! Active (1) or inactive (0) trajectory
+      integer,allocatable, dimension (:)  :: leftflag        ! Flag for domain-leaving
+      real                                   xx1,yy1,pp1     ! Updated position of air parcel
+      integer                                leftcount       ! Number of domain leaving trajectories
+      integer                                ntim            ! Number of output time steps
+
+c     Input and output format for trajectories (see iotra.f)
+      integer   inpmode
+      integer   outmode
+
+c     Meteorological fields
+      real,allocatable, dimension (:)     :: uut0,uut1       ! Zonal wind
+      real,allocatable, dimension (:)     :: vvt0,vvt1       ! Meridional wind
+      real,allocatable, dimension (:)     :: wwt0,wwt1       ! Vertical wind
+      real,allocatable, dimension (:)     :: fld0,fld1       ! Tracing field
+
+c     Grid description
+      real,allocatable, dimension (:)     :: zuv,zw         ! 3d-model height for U, V, W grid
+      real,allocatable, dimension (:)     :: zb             ! Surface height
+
+      real                                   pollon,pollat   ! Longitude/latitude of pole
+      real                                   polgam          ! Rotation of grid
+      real                                   xmin,xmax       ! Zonal grid extension
+      real                                   ymin,ymax       ! Meridional grid extension
+      integer                                nx,ny,nz        ! Grid dimensions
+      real                                   dx,dy           ! Horizontal grid resolution
+      real                                   mdv             ! Missing data value
+      
+c     Variable tracing
+      integer                                ntrace
+      character*80                           tvar(20)        ! Name of tracing variable
+      real                                   tfac(20)        ! Scaling factor for output
+      character*180                          tfil(20)        ! File name prefix
+
+c     Auxiliary variables                 
+      real                                   rd
+      integer	                             itm,iloop,i,j,k,filo,lalo
+      integer                                ierr,stat
+      integer                                cdfid,fid
+      integer	                             time0,time1,time
+      real                                   reltpos0,reltpos1
+      real                                   xind,yind,pind,pp,sp,stagz
+      character*180                          filename,varname
+      integer                                reftmp(6)
+      character                              ch
+      real                                   frac,tload
+      integer                                itim
+      real                                   lon,lat,rlon,rlat
+      integer                                timemin,timemax
+      character*200                          arg
+      integer                                iargc
+      integer                                timerange
+      integer                                first
+      real                                   thhmm,tfrac
+      integer                                date1(5),date2(5)
+      logical                                file_exists
+      integer                                nactive,delta
+      integer                                indt,indt0,indt1
+      integer                                file_load
+      real                                   x0,y0,z0,f0,zind
+      real                                   diff,fdiff,offset,foffset
+      character*200                          inpdir
+      character*80                           string
+      character*13                           datestr
+
+c     Externals 
+      real                                   lmtolms        ! Grid rotation
+      real                                   phtophs    
+      real                                   lmstolm
+      real                                   phstoph        
+      external                               lmtolms,phtophs
+      external                               lmstolm,phstoph
+      real                                   phi2phirot
+      real                                   phirot2phi
+      real                                   rla2rlarot
+      real                                   rlarot2rla
+      external                               phi2phirot,phirot2phi
+      external                               rla2rlarot,rlarot2rla
+      real                                   int_index4
+      external                               int_index4
+
+c     Make sure that fid is positive
+      fid=abs(fid)
+
+c     --------------------------------------------------------------------
+c     Start of program, Read parameters
+c     --------------------------------------------------------------------
+
+c     Write start message
+      print*,'========================================================='
+      print*,'              *** START OF PROGRAM CALTRA ***'
+      print*
+
+c     Usage
+      if ( iargc().eq.0 ) then
+        print*,'caltra {startf} {timerange in [h]} {outfile} [optional]'
+        print*
+        print*,' -i value      : time increments (min) between files'
+        print*,' -ts value     : time step (min) [default = timeinc/12]'
+        print*,' -o value      : output interval (min) [default = ts]'
+        print*,' -ref date     : reference date YYYYMMDD_HHMM'
+        print*,' -dir name     : data directory with MPAS files'
+        print*,' -f [h,m,mpas] : set format of the date [default m];'
+        print*,'                 h    : YYYYMMDD_HH'
+        print*,'                 m    : YYYYMMDD_HHMM'
+        print*,'                 mpas : YYYY-MM-DD_HH.MM.SS'
+        print*,' -prefix str   : prefix string [default = P]'
+        print*,' -suffix str   : appendix string [default = none]'
+        print*,' -const str    : const file [default zgrid_{pre}.{app}]'
+      print*,'========================================================='
+        stop
+      endif
+
+c     Get all mandatory arguments
+      call getarg(1,arg)
+      strname = trim(arg)
+      call getarg(2,arg)
+      read(arg,*) timerange
+      call getarg(3,arg)
+      cdfname = trim(arg)
+
+c     Get optional arguments
+      i          = 4
+      timeinc    = 60
+      ts         = 1.
+      deltout    = 360
+      first      = 1
+      reftime(1) = 0
+      reftime(2) = 0
+      reftime(3) = 0
+      reftime(4) = 0
+      reftime(5) = 0
+      reftime(6) = 0
+      cosmotime(1) = 0
+      cosmotime(2) = 0
+      cosmotime(3) = 0
+      cosmotime(4) = 0
+      cosmotime(5) = 0
+      cosmotime(6) = 0
+      dateformat = 'm'
+      inpdir     = 'PWD'
+      do while ( i.le.iargc() )
+        
+        call getarg(i,arg)
+        
+        if ( trim(arg).eq.'-i' ) then
+           if ( first.eq.1 ) then
+            print*,
+     >      '---- OPTIONAL PARAMETERS --------------------------------'
+              print*
+              first = 0
+           endif
+           call getarg(i+1,arg)
+           i = i + 2
+           read(arg,*) timeinc
+           print*,'  argument -i set to          : ',timeinc, ' min'
+        endif
+        
+        if ( trim(arg).eq.'-ts' ) then
+           if ( first.eq.1 ) then
+            print*,
+     >       '---- OPTIONAL PARAMETERS --------------------------------'
+              print*
+              first = 0
+           endif
+           call getarg(i+1,arg)
+           i = i + 2
+           read(arg,*) ts
+           print*,'  argument -ts set to         : ',ts, ' min'
+        endif
+        
+        if ( trim(arg).eq.'-o' ) then
+           if ( first.eq.1 ) then
+            print*,
+     >       '---- OPTIONAL PARAMETERS --------------------------------'
+              print*
+              first = 0
+           endif
+           call getarg(i+1,arg)
+           i = i + 2
+           read(arg,*) deltout
+           print*,'  argument -o set to          : ',deltout, ' min'
+        endif
+        
+        if ( trim(arg).eq.'-ref' ) then
+           if ( first.eq.1 ) then
+            print*,
+     >       '---- OPTIONAL PARAMETERS --------------------------------'
+              print*
+              first = 0
+           endif
+           call getarg(i+1,arg)
+           i = i + 2
+           read(arg(1:4),*)   reftime(1)  ! year
+           read(arg(5:6),*)   reftime(2)  ! month
+           read(arg(7:8),*)   reftime(3)  ! day
+           read(arg(10:11),*) reftime(4)  ! hour
+           read(arg(12:13),*) reftime(5)  ! min
+           print*,'  argument -ref set to        : ',trim(arg)
+        endif
+        
+        if ( trim(arg).eq.'-f' ) then
+          if ( first.eq.1 ) then
+            print*,
+     >       '---- OPTIONAL PARAMETERS --------------------------------'
+              print*
+              first = 0
+           endif
+           call getarg(i+1,arg)
+           i = i + 2
+           dateformat = arg
+           print*,'  argument -f set to          : ',trim(dateformat)
+        endif
+
+       if ( trim(arg).eq.'-dir' ) then
+           if ( first.eq.1 ) then
+            print*,
+     >       '---- OPTIONAL PARAMETERS --------------------------------'
+              print*
+              first = 0
+           endif
+           call getarg(i+1,arg)
+           i = i + 2
+           inpdir = arg
+           print*,'  argument -dir set to        : ',trim(inpdir)
+        endif
+
+       if ( trim(arg).eq.'-prefix' ) then
+           if ( first.eq.1 ) then
+            print*,
+     >       '---- OPTIONAL PARAMETERS --------------------------------'
+              print*
+              first = 0
+           endif
+           call getarg(i+1,arg)
+           i = i + 2
+           prefix = arg
+           print*,'  argument -prefix set to     : ',trim(prefix)
+        endif
+
+       if ( trim(arg).eq.'-suffix' ) then
+           if ( first.eq.1 ) then
+            print*,
+     >       '---- OPTIONAL PARAMETERS --------------------------------'
+              print*
+              first = 0
+           endif
+           call getarg(i+1,arg)
+           i = i + 2
+           suffix = arg
+           print*,'  argument -suffix set to     : ',trim(suffix)
+        endif
+
+       if ( trim(arg).eq.'-const' ) then
+           if ( first.eq.1 ) then
+            print*,
+     >       '---- OPTIONAL PARAMETERS --------------------------------'
+              print*
+              first = 0
+           endif
+           call getarg(i+1,arg)
+           i = i + 2
+           constfile = arg
+           print*,'  argument -const set to      : ',trim(constfile)
+        endif
+
+      enddo
+      if ( first.eq.0 ) print*
+      
+c     Convert time range from h to min
+      timerange = 60 * timerange
+
+c     Check that output interval is consistent with time step
+      if ( mod(deltout,ts).ne.0 ) then
+        print*,' ERROR: output interval must be multiple of timestep'
+        stop
+      endif
+      
+c     Check that timerange is consistent with time increment
+      if ( mod(timerange,timeinc).ne.0 ) then
+        print*,' ERROR: timerange must be multiple of timeinc'
+        stop
+      endif
+      
+c     Set flag for forward/backward mode
+      if ( timerange.gt.0 ) then
+         fbflag = 1
+      else
+         fbflag = -1
+      endif
+      
+c     Set the formats of the input and output files
+      call mode_tra(inpmode,strname)
+      call mode_tra(outmode,cdfname)
+      if (outmode.eq.-1) outmode=1
+
+c     Get dimensions of trajectory file
+      if (inpmode.eq.-1) then
+          ncol=4
+          ntra = 0
+          OPEN (1, file = strname)
+            DO
+              READ(1,*,end=108) string
+              ntra = ntra + 1
+            END DO
+ 108      CLOSE (1)
+      else
+          call info_tra(strname,ntra,ntim,ncol,inpmode)
+      endif
+
+c     Calculate the number of output time steps
+      ntim = abs(timerange/deltout) + 1
+
+c     Write some status information
+      print*,'---- INPUT PARAMETERS -----------------------------------'
+      print* 
+      print*,'  Forward/Backward       : ',fbflag
+      print*,'  time increment         : ',timeinc
+      print*,'  Output file            : ',trim(cdfname)
+      print*,'  Time step (min)        : ',ts
+      print*,'  Output time interval   : ',deltout
+      print*,'  Jump flag              : ',jflag
+      print*,'  Vertical wind (scale)  : ',wfactor
+      print*,'  Trajectory pos file    : ',trim(strname)
+      print*,'  # of trajectories      : ',ntra
+      print*,'  # of output timesteps  : ',ntim
+      if ( inpmode.eq.-1) then
+         print*,'  Input format           : (lon,lat,p)-list'
+      else
+         print*,'  Input format           : ',inpmode
+      endif
+      print*,'  Output format          : ',outmode
+      print*,'  Periodicity            : ',per
+      print*,'  Time check             : ',trim(timecheck)
+      print*,'  Input directory        : ',trim(inpdir) 
+      if ( abs(balloon).gt.eps ) then
+         print*
+         print*,'  WARNING -> Lagranto in Sounding Mode'
+         print*
+         print*,'  Balloon velocity [m/s] : ',balloon
+      endif
+      print*,'  constant file          : ',trim(constfile)
+      print*,'  prefix                 : ',trim(prefix)
+      print*,'  suffix                 : ',trim(suffix)
+      print*
+      
+c     Check whether a tracing file exists; if yes, read it
+      INQUIRE(FILE=tracevar, EXIST=file_exists)
+      if ( file_exists.eqv..false. ) then
+         ntrace = 0
+      else
+         ntrace = 0
+         open(10,file=tracevar)
+  10         continue
+             ntrace = ntrace + 1
+             read(10,*,end=20) tvar(ntrace), tfac(ntrace), tfil(ntrace)
+             goto 10
+  20         continue
+             ntrace = ntrace -1            
+         close(10)
+      endif
+      
+c     Write status info on screen
+      if ( ntrace.gt.0 ) then
+         print*,
+     >       '---- TRACING --------------------------------------------'
+         print* 
+         print*,' tracing file      : ',trim(tracevar)
+         print*
+         do i=1,ntrace
+            write(*,'(2x,a10,f10.2,2x,a5)') tvar(i),tfac(i),tfil(i)
+         enddo
+         print*
+      endif
+      
+c     --------------------------------------------------------------------
+c     Get starting positions, allocate memory for trajectories
+c     --------------------------------------------------------------------
+
+C     Get memory for trajectory arrays
+      allocate(trainp(ntra,1,ncol),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array trainp   ***' ! Input start coordinates
+      allocate(traout(ntra,ntim,4+ntrace),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array traout   ***' ! Output trajectories
+      allocate(xx0(ntra),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array xx0      ***' ! X position (longitude)
+      allocate(yy0(ntra),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array yy0      ***' ! Y position (latitude)
+      allocate(pp0(ntra),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array pp0      ***' ! Pressure
+      allocate(tt0(ntra),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array tt0      ***' ! Time
+      allocate(leftflag(ntra),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array leftflag ***' ! Leaving-domain flag
+      allocate(active(ntra),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array active ***'   ! Active/inactive trajectories
+
+c     Read start coordinates from file - Format (time,lon,lat,lev)
+      if (inpmode.eq.-1) then
+         open(fid,file=strname)
+          do i=1,ntra
+             read(fid,*) tt0(i),xx0(i),yy0(i),pp0(i)
+          enddo
+         close(fid)
+
+c     Read start coordinates from trajectory file - check consistency of ref time
+c     if no time specifier is given, all times are assumed to be 0 (= ref time)
+      else
+         call ropen_tra(cdfid,strname,ntra,1,ncol,reftmp,vars,inpmode)
+         call read_tra (cdfid,trainp,ntra,1,ncol,inpmode)
+         do i=1,ntra
+            thhmm   = trainp(i,1,1)
+            xx0(i)  = trainp(i,1,2) 
+            yy0(i)  = trainp(i,1,3) 
+            pp0(i)  = trainp(i,1,4) 
+            call hhmm2frac(thhmm,tfrac)
+            tt0(i) = nint( 60. * tfrac )
+         enddo
+         call close_tra(cdfid,inpmode)
+         
+         if ( reftime(1).eq.0 ) then
+            reftime(1) = reftmp(1)
+            reftime(2) = reftmp(2)
+            reftime(3) = reftmp(3)
+            reftime(4) = reftmp(4)
+            reftime(5) = reftmp(5)
+         endif
+         
+      endif
+      
+c     Check that a reference date is set
+      if ( reftime(1).eq.0 ) then
+          print*
+          print*,' ERROR: reference date is missing / cannot be defined'
+          stop
+      endif
+
+c     Set value and sign of time range
+      reftime(6) = timerange
+         
+c     Write some status information
+      print*,'---- REFERENCE DATE---------- ---------------------------'
+      print*
+      print*,' Reference time (year)  :',reftime(1)
+      print*,'                (month) :',reftime(2)
+      print*,'                (day)   :',reftime(3)
+      print*,'                (hour)  :',reftime(4)
+      print*,'                (min)   :',reftime(5)
+      print*,' Time range             :',reftime(6),' min'
+      print*
+      
+c     -----------------------------------------------------------------------
+c     Set the list of needed input files
+c     -----------------------------------------------------------------------
+
+c     Now get a list of trajectory times that have to be calculated
+      timemin = tt0(1) 
+      timemax = tt0(1) 
+      do i=2,ntra
+         if ( tt0(i).lt.timemin ) timemin = tt0(i)
+         if ( tt0(i).gt.timemax ) timemax = tt0(i)
+      enddo
+      
+c     Add timerange to time window (times in min)
+      if ( fbflag.eq.1 ) then
+         timemax = timemax + timerange
+      else 
+         timemin = timemin + timerange
+      endif
+      
+c     Find nearest multiples of timeinc
+      if ( mod(timemax,timeinc).ne.0 ) then
+         if ( timemax.gt.0 ) then
+            timemax = (timemax/timeinc+1) * timeinc
+         else
+            timemax = (timemax/timeinc  ) * timeinc
+         endif
+      endif
+      if ( mod(timemin,timeinc).ne.0 ) then
+         if ( timemin.gt.0 ) then
+            timemin = (timemin/timeinc  ) * timeinc
+         else
+            timemin = (timemin/timeinc-1) * timeinc
+         endif
+      endif
+  
+c     Set the number of files needed
+      numdat = ( timemax - timemin ) / timeinc + 1
+
+c     Wriet total time range to screen
+      print*,'---- TIME RANGE OF ALL TRAJECTORIES ---------------------'
+      print*
+      print*,' Min(Time) [min]        :',timemin
+      print*,' Max(Time) [min]        :',timemax
+      print*
+
+c     Now get the list of dates needed 
+      if ( fbflag.eq.1 ) then
+         do i=1,numdat
+         
+           itime(i) = timemin + (i-1) * timeinc
+           date1(1) = reftime(1)
+           date1(2) = reftime(2)
+           date1(3) = reftime(3)
+           date1(4) = reftime(4)
+           date1(5) = reftime(5)
+           call newdate(date1,real(itime(i)),date2)
+           if ( dateformat.eq.'h') then
+               call datestring ( datestr, date2(1),date2(2),date2(3),
+     >                           date2(4),-1)
+              dat(i) = datestr 
+           elseif (dateformat.eq.'m') then
+              call datestring ( datestr, date2(1),date2(2),date2(3),
+     >                          date2(4),date2(5))
+              dat(i) = datestr
+           elseif (dateformat.eq.'mpas' ) then
+              call datestring ( datestr, date2(1),date2(2),date2(3),
+     >                          date2(4),date2(5))
+              dat(i) = trim(datestr(1:4))//'-'//
+     >                 trim(datestr(5:6))//'-'//
+     >                 trim(datestr(7:8))//'_'//
+     >                 trim(datestr(9:10))//'.'//
+     >                 trim(datestr(11:12))//'.00'
+          endif
+          
+         enddo
+
+      elseif (fbflag.eq.-1) then
+         do i=1,numdat
+
+           itime(i) = timemin + (numdat-i) * timeinc
+           date1(1) = reftime(1)
+           date1(2) = reftime(2)
+           date1(3) = reftime(3)
+           date1(4) = reftime(4)
+           date1(5) = reftime(5)
+           call newdate(date1,real(itime(i)),date2)
+           if ( dateformat.eq.'h') then
+               call datestring ( datestr, date2(1),date2(2),date2(3),
+     >                           date2(4),-1)
+               dat(i) = datestr
+          elseif (dateformat.eq.'m') then
+              call datestring ( datestr, date2(1),date2(2),date2(3),
+     >                          date2(4),date2(5))
+              dat(i) = datestr
+          elseif (dateformat.eq.'mpas' ) then
+              call datestring ( datestr, date2(1),date2(2),date2(3),
+     >                          date2(4),date2(5))
+              dat(i) = trim(datestr(1:4))//'-'//
+     >                 trim(datestr(5:6))//'-'//
+     >                 trim(datestr(7:8))//'_'//
+     >                 trim(datestr(9:10))//'.'//
+     >                 trim(datestr(11:12))//'.00'
+          endif
+         enddo
+
+      endif
+
+c     Write list of dates
+      do i=1,numdat
+           if ( (mod(i,10).eq.0).or.(i.eq.1).or.
+     >          (i.eq.numdat).and.(mod(i,10).ne.0).or.
+     >          (numdat.lt.20) )
+     >     then
+              print*,i,real(itime(i))/60.,
+     >             trim(prefix)//trim(dat(i))//'.'//trim(suffix)
+           endif
+      enddo
+
+c     Write some status information
+      print* 
+      print*,'  Forward/Backward       : ',fbflag
+      print*,'  #input files           : ',numdat
+      print*,'  First/last input file  : ',trim(dat(1)),' ... ',
+     >                                     trim(dat(numdat))
+      print*,'  time increment         : ',timeinc
+      print*,'  Output file            : ',trim(cdfname)
+      print*,'  Time step (min)        : ',ts
+      print*,'  Output time interval   : ',deltout
+      print*
+
+c     -----------------------------------------------------------------------
+c     Get the constant grid parameters (allocate memory for met arrays)
+c     ----------------------------------------------------------------------
+
+c     Read the constant grid parameters (nx,ny,nz,xmin,xmax,ymin,ymax,pollon,pollat)
+c     The negative <-fid> of the file identifier is used as a flag for parameter retrieval  
+      nx       = 1
+      ny       = 1
+      nz       = 1
+      call input_grid (constfile,xmin,xmax,ymin,ymax,
+     >                 dx,dy,nx,ny,pollon,pollat,polgam,rd,rd,nz,1)
+
+C     Check if the number of levels is too large
+      if (nz.gt.nlevmax) goto 993
+      
+c     Write some status information
+      print*
+      print*,'---- CONSTANT GRID PARAMETERS ---------------------------'
+      print*
+      print*,'  xmin,xmax     : ',xmin,xmax
+      print*,'  ymin,ymax     : ',ymin,ymax
+      print*,'  dx,dy         : ',dx,dy
+      print*,'  pollon,pollat : ',pollon,pollat
+      print*,'  polgam        : ',polgam
+      print*,'  nx,ny,nz      : ',nx,ny,nz
+      print*,'  per, hem      : ',per,hem
+      print*
+     
+C     Allocate memory for wind arrays
+      allocate(uut0(nx*ny*nz),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array uut0 ***'   ! Zonal wind
+      allocate(uut1(nx*ny*nz),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array uut1 ***'
+      allocate(vvt0(nx*ny*nz),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array vvt0 ***'   ! Meridional wind
+      allocate(vvt1(nx*ny*nz),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array vvt1 ***'
+      allocate(wwt0(nx*ny*nz),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array wwt0 ***'   ! Vertical wind
+      allocate(wwt1(nx*ny*nz),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array wwt1 ***'
+
+c	  Allocate memory for model grid
+      allocate(zuv(nx*ny*nz),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array zu ***'     ! Z for U and V grid
+      allocate(zw(nx*ny*nz),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array zw ***'     ! Z for W grid
+      allocate(zb(nx*ny),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array zb ***'     ! surface height
+      allocate(uut0(nx*ny*nz),stat=stat)
+
+C     Allocate memory for tracing arrays
+      allocate(fld0(nx*ny*nz),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array fld0 ***'   ! Tracing field
+      allocate(fld1(nx*ny*nz),stat=stat)
+      if (stat.ne.0) print*,'*** error allocating array fld1 ***'
+
+c     Read models heights for U, V, W grid
+      call input_grid (constfile,xmin,xmax,ymin,ymax,
+     >                 dx,dy,nx,ny,pollon,pollat,polgam,zuv,zb,nz,0)
+      do i=1,nx*ny*nz
+          zw(i) = zuv(i)
+      enddo
+     
+c     Write model height at central point
+      print*
+      print*,'---- MODEL HEIGHT at CENTRAL POINT ----------------------'
+      print*
+      do k=1,nz
+        i = nx/2 + (ny/2-1) * nx + (k-1) * nx * ny
+        write(*,'(i4,f10.2)') k,zuv(i)
+      enddo
+      print*
+      i = nx/2 + (ny/2-1) * nx 
+      print*,' TOPOGRAPHY : ',zb(i)
+      print*
+      
+c     -----------------------------------------------------------------------
+c     Loop to calculate trajectories
+c     -----------------------------------------------------------------------
+
+c     Write some status information
+      print*,'---- TRAJECTORIES ----------- ---------------------------'
+      print*   
+       
+c     Rotate starting coordinates
+      do i=1,ntra
+         
+         lon = xx0(i)
+         lat = yy0(i)
+         
+         if ( abs(polgam).gt.eps ) then
+
+           rlat = phi2phirot ( lat, lon, pollat, pollon )
+           rlon = rla2rlarot ( lat, lon, pollat, pollon, polgam )
+
+         else
+
+            if ( abs(pollat-90.).gt.eps) then
+               rlon = lmtolms(lat,lon,pollat,pollon)
+               rlat = phtophs(lat,lon,pollat,pollon)
+            else
+               rlon = lon
+               rlat = lat
+            endif   
+
+         endif
+         
+         xx0(i) = rlon
+         yy0(i) = rlat
+
+      enddo
+
+C     Save starting positions 
+c      itim = 1
+c      do i=1,ntra
+c         traout(i,itim,1) = real(tt0(i))
+c         traout(i,itim,2) = xx0(i)
+c         traout(i,itim,3) = yy0(i)
+c         traout(i,itim,4) = pp0(i)
+c      enddo
+      
+c     Set all other fields to mdv (sufficeint to mask z column)
+      do i=1,ntra
+        do j=2,ntim
+           traout(i,j,4) = -999.
+        enddo
+      enddo
+      
+c     Init the flag and the counter for trajectories leaving the domain
+      leftcount=0
+      do i=1,ntra
+         leftflag(i)=0
+      enddo
+      
+c     Read wind fields and vertical grid from first file
+      if ( inpdir.ne.'PWD' ) then
+       filename = trim(inpdir)//'/'//trim(prefix)//
+     >                               trim(dat(1))//trim(suffix)
+      else
+       filename = trim(prefix)//trim(dat(1))//trim(suffix)
+      endif
+      
+      tload    = real(itime(1))
+      write(*,'(a16,a20,f7.2)') '  (file,time) : ',
+     >                       trim(dat(1)),tload/60.
+
+      call input_open (fid,filename)
+      varname='U'                                      ! U
+      call input_wind 
+     >    (fid,varname,uut1,mdv,
+     >     xmin,xmax,ymin,ymax,dx,dy,nx,ny,nz)
+      varname='V'                                      ! V
+      call input_wind 
+     >    (fid,varname,vvt1,mdv,
+     >     xmin,xmax,ymin,ymax,dx,dy,nx,ny,nz)
+      varname='W'                                      ! W
+      call input_wind 
+     >    (fid,varname,wwt1,mdv,
+     >     xmin,xmax,ymin,ymax,dx,dy,nx,ny,nz)      
+      call input_close(fid)
+
+c     Mark all trajectories as inactive
+      do i=1,ntra
+        active(i) = 0
+      enddo
+
+c     Loop over all input files (time step is <timeinc>)
+      do itm=1,numdat-1
+
+c       Calculate actual and next time
+        time0 = itime(itm  ) 
+        time1 = itime(itm+1) 
+        
+c       Copy old velocities to new ones
+        do i=1,nx*ny*nz
+           uut0(i)=uut1(i)
+           vvt0(i)=vvt1(i)
+           wwt0(i)=wwt1(i)
+        enddo
+
+c       Read wind fields and surface pressure at next time
+        if ( inpdir.ne.'PWD' ) then
+           filename = trim(inpdir)//'/'//trim(prefix)
+     >                            //trim(dat(itm+1))//trim(suffix)
+        else
+           filename = trim(prefix)//trim(dat(itm+1))//trim(suffix)
+        endif
+        tload    = real( itime(itm+1) )
+
+        call frac2hhmm(real(time1),tload)
+        write(*,'(a16,a20,f7.2)') '  (file,time) : ',
+     >                          trim(dat(itm+1)),tload/60.
+
+        call input_open (fid,filename)
+        varname='U'                                     ! U
+        call input_wind 
+     >       (fid,varname,uut1,mdv,
+     >        xmin,xmax,ymin,ymax,dx,dy,nx,ny,nz)
+        varname='V'                                     ! V
+        call input_wind 
+     >       (fid,varname,vvt1,mdv,
+     >        xmin,xmax,ymin,ymax,dx,dy,nx,ny,nz)
+        varname='W'                                     ! W
+        call input_wind 
+     >       (fid,varname,wwt1,mdv,
+     >        xmin,xmax,ymin,ymax,dx,dy,nx,ny,nz)      
+        call input_close(fid)
+
+c       Split the interval <timeinc> into computational time steps <ts>
+        nactive   = 0
+        file_load = 0
+        do iloop=0,(timeinc/ts-1)+1
+
+C         Calculate relative time position in the interval timeinc (0=beginning, 1=end)
+          reltpos0 = real( iloop     * ts ) / real(timeinc)
+          reltpos1 = real( (iloop+1) * ts ) / real(timeinc)
+
+c         Set the time of the the trajectory step
+          time = time0 + iloop*ts*fbflag
+
+C         Initialize counter for domain leaving trajectories
+          leftcount=0
+
+c         Timestep for all trajectories
+          do i=1,ntra
+
+c           Set the flag whether the trajectory is active or not
+            active(i) = 1
+            if ( fbflag.eq.1 ) then
+               if ( time.lt.tt0(i)           ) active(i)=0
+               if ( time.gt.tt0(i)+timerange ) active(i)=0
+            else
+               if ( time.lt.tt0(i)+timerange ) active(i)=0
+               if ( time.gt.tt0(i)           ) active(i)=0
+            endif
+            if ( active(i).eq.1 ) nactive = nactive + 1
+
+          enddo
+
+c         Decide whether trajectory has to be saved (active(i) = 2)
+          do i=1,ntra
+            delta = mod(time-tt0(i),deltout)
+            if ( (delta.eq.0).and.(active(i).eq.1) ) then
+                active(i)  = 2
+                file_load  = 1
+            endif
+          enddo
+
+C         Save positions only every deltout minutes
+          do i=1,ntra
+          
+            print*,' T : ',active(i),
+     >     time,tt0(i),deltout,       
+     >     fbflag * (time - tt0(i)) / deltout + 1,
+     >     iloop.eq.(timeinc/ts)
+      
+            if ( active(i).eq.2 ) then
+              indt = fbflag * (time - tt0(i)) / deltout + 1
+              call frac2hhmm(real(time),tload)
+              traout(i,indt,1) = tload
+              if ( abs( pp0(i) + 999. ).lt.eps ) then
+                   traout(i,indt,2) = -999.
+                   traout(i,indt,3) = -999.
+                   traout(i,indt,4) = -999.
+              else
+                   traout(i,indt,2) = xx0(i)
+                   traout(i,indt,3) = yy0(i)
+                   traout(i,indt,4) = pp0(i)
+              endif
+           endif
+          enddo
+
+c         Avoid double-updating at time instances with input files          
+          if ( iloop.eq.(timeinc/ts) ) goto 100
+
+c         Update the trajectory position
+          do i=1,ntra
+
+c           If the trajectory is not active, nothing to do 
+            if ( active(i).eq.0 ) goto 100
+
+C           Check if trajectory has already left the data domain
+            if (leftflag(i).ne.1) then	
+
+c             Iterative Euler timestep (x0,y0,p0 -> x1,y1,p1)
+              call euler(
+     >               xx1,yy1,pp1,leftflag(i),
+     >               xx0(i),yy0(i),pp0(i),reltpos0,reltpos1,
+     >               real(ts)*60,numit,jflag,mdv,wfactor,fbflag,
+     >               zuv,zw,zb,uut0,uut1,vvt0,vvt1,wwt0,wwt1,
+     >               xmin,ymin,dx,dy,per,hem,nx,ny,nz,fflag,
+     >               lat_fixed,balloon)
+
+c             Update trajectory position, or increase number of trajectories leaving domain
+              if (leftflag(i).eq.1) then
+                leftcount=leftcount+1
+                print*,'     -> Trajectory ',i,' leaves domain'
+                xx0(i)=-999.
+                yy0(i)=-999.
+                pp0(i)=-999.
+              else
+                xx0(i)=xx1
+                yy0(i)=yy1
+                pp0(i)=pp1
+              endif
+
+c          Trajectory has already left data domain (mark as <mdv>)
+           else
+              xx0(i)=-999.
+              yy0(i)=-999.
+              pp0(i)=-999.
+           endif
+           
+c          Exit point for inactive trajectories
+ 100       continue
+
+          enddo
+
+c         Decide whether trajectory has to be saved (active(i) = 2)
+          do i=1,ntra
+            delta = mod(time-tt0(i),deltout)
+            if ( (delta.eq.0).and.(active(i).eq.1) ) then
+                active(i)  = 2
+                file_load  = 1
+            endif
+          enddo
+
+C         Save positions only every deltout minutes
+          do i=1,ntra
+            if ( active(i).eq.2 ) then
+              indt = fbflag* (time - tt0(i)) / deltout + 1              
+              call frac2hhmm(real(time),tload)
+              traout(i,indt,1) = tload
+              if ( abs( pp0(i) + 999. ).lt.eps ) then
+                   traout(i,indt,2) = -999.
+                   traout(i,indt,3) = -999.
+                   traout(i,indt,4) = -999.
+              else
+                   traout(i,indt,2) = xx0(i)
+                   traout(i,indt,3) = yy0(i)
+                   traout(i,indt,4) = pp0(i)
+              endif
+           endif
+          enddo
+
+c       End loop over times steps between two input files
+        enddo
+
+c       Count the number of active trajectories
+        print*,'     -------------------------------------------------',
+     >         nint(100. * real(nactive)/real((timeinc/ts)*ntra)),' %'
+
+c       Tracing - but only if any of the positions was updated
+        if ( file_load.eq.1 ) then
+
+c         Loop over all tracing variables
+          do j=1,ntrace
+
+             print*,'   -> Now tracing ',trim(tvar(j)),' ',trim(tfil(j))
+
+c            Load field at first time
+             if ( inpdir.ne.'PWD' ) then
+                 filename = trim(inpdir)//'/'//
+     >                      trim(tfil(j))//trim(dat(itm))//trim(suffix)
+             else
+                 filename = trim(tfil(j))//trim(dat(itm))//trim(suffix)
+             endif
+             varname  = tvar(j)
+             tload    = real( itime(itm) )
+             call input_open (fid,filename)
+             call input_wind
+     >                 (fid,varname,fld0,mdv,
+     >                  xmin,xmax,ymin,ymax,dx,dy,nx,ny,nz)
+             call input_close(fid)
+             print*,'   -> R ',trim(tvar(j)),' from ',trim(dat(itm))
+
+c            Load field at second time
+             if ( inpdir.ne.'PWD' ) then
+                filename = trim(inpdir)//'/'//
+     >                     trim(tfil(j))//trim(dat(itm+1))//trim(suffix)
+             else
+                filename = trim(tfil(j))//trim(dat(itm+1))//trim(suffix)
+             endif
+             varname  = tvar(j)
+             tload    = real( itime(itm+1) )
+             call input_open (fid,filename)
+             call input_wind
+     >                 (fid,varname,fld1,mdv,
+     >                  xmin,xmax,ymin,ymax,dx,dy,nx,ny,nz)
+             call input_close(fid)
+             print*,'   -> R ',trim(tvar(j)),' from ',trim(dat(itm+1))
+
+c            Loop over trajectories and all times
+             do i=1,ntra
+             
+c                Set which time indices are covered by dat(itm)...dat(itm+1)
+                 indt0 = fbflag* (time0 - tt0(i)) / deltout + 1          
+                 indt1 = fbflag* (time1 - tt0(i)) / deltout + 1  
+             
+                 do indt=indt0,indt1
+                 
+c                    Skip if outside trajectory range
+                     if ( (indt.lt.1).or.(indt.gt.ntim) ) goto 200 
+                 
+c                    Set the time of the the trajectory step
+                     time = nint( traout(i,indt,1) ) 
+
+C                    Calculate relative time position in the interval timeinc (0=beginning, 1=end)
+                     reltpos0 = fbflag * 
+     >                    real(time - time0) / real(timeinc)
+                     if ( (reltpos0.lt.-eps).or.
+     >                    (reltpos0.gt.(1.+eps) ) ) goto 200
+
+c                    Extract position of trajectory                    
+                     x0   = traout(i,indt,2)
+                     y0   = traout(i,indt,3)
+                     z0   = traout(i,indt,4)
+
+c                    Do the interpolation
+                     if ( (abs(x0-mdv).gt.eps).and.
+     >                    (abs(x0-mdv).gt.eps) )
+     >               then
+                          call get_index4 (xind,yind,zind,x0,y0,z0,
+     >                                reltpos0,zuv,zuv,zb,zb,3,
+     >                                nx,ny,nz,xmin,ymin,dx,dy,mdv)
+                     else
+                          xind = mdv
+                          yind = mdv
+                          zind = mdv
+                     endif
+
+                     if ( zind.lt.1. ) zind = 1.
+
+                     if ( (xind.ge.1.).and.(xind.le.real(nx)).and.
+     >                    (yind.ge.1.).and.(yind.le.real(ny)).and.
+     >                    (zind.ge.1.).and.(zind.le.real(nz)) )
+     >               then
+                          f0 = int_index4(fld0,fld1,nx,ny,nz,
+     >                                    xind,yind,zind,reltpos0,mdv)
+                     else
+                          f0 = mdv
+                     endif
+                     
+c                    Save the interpolated  field                     
+                     traout(i,indt,4+j) = f0
+
+c                    Exit point for time loop
+200                  continue 
+                  
+c                 End loop over times                    
+                  enddo
+                  
+c              End loop over trajectories                  
+               enddo
+               
+c            End loop over tracing variables               
+             enddo
+
+          endif
+      
+c     End loop over input files
+      enddo
+     
+c     -----------------------------------------------------------------------
+c     Write output
+c     -----------------------------------------------------------------------
+
+c     Coordinate rotation
+      do i=1,ntra
+         do j=1,ntim
+
+            rlon = traout(i,j,2)
+            rlat = traout(i,j,3)
+
+            if ( abs(polgam).gt.eps ) then
+
+              lon = rlarot2rla (rlat, rlon, pollat, pollon, polgam)
+              lat = phirot2phi (rlat, rlon, pollat, pollon, polgam)
+
+            else
+
+              if ( abs(pollat-90.).gt.eps) then
+                 lon = lmstolm(rlat,rlon,pollat,pollon)
+                 lat = phstoph(rlat,rlon,pollat,pollon)
+              else
+                 lon = rlon
+                 lat = rlat
+              endif
+            
+            endif
+            
+            traout(i,j,2) = lon
+            traout(i,j,3) = lat
+
+         enddo
+      enddo
+
+c     Change time format to hh.mm
+      do i=1,ntra
+         do j=1,ntim
+         
+            tload = traout(i,j,1)/60.
+            call frac2hhmm(tload,traout(i,j,1))
+         
+         enddo
+      enddo
+      
+c     Apply scaling to tracing fields
+      if ( ntrace.gt.0 ) then
+         do i=1,ntra  
+            do j=1,ntim
+               do k=1,ntrace
+                  traout(i,j,4+k) = tfac(k) * traout(i,j,4+k)
+               enddo
+            enddo
+         enddo
+      endif
+
+c     Write trajectory file
+      vars(1)  ='time'
+      vars(2)  ='lon'
+      vars(3)  ='lat'
+      vars(4)  ='z'
+      do i=1,ntrace
+         vars(4+i) = tvar(i)
+      enddo
+      call wopen_tra
+     >      (cdfid,cdfname,ntra,ntim,4+ntrace,reftime,vars,outmode)
+      call write_tra(cdfid,traout,ntra,ntim,4+ntrace,outmode)
+      call close_tra(cdfid,outmode)   
+
+c     Write some status information, and end of program message
+      print*  
+      print*,'---- STATUS INFORMATION --------------------------------'
+      print*
+      print*,'  #leaving domain    ', leftcount
+      print*,'  #staying in domain ', ntra-leftcount
+      print*
+      print*,'              *** END OF PROGRAM CALTRA ***'
+      print*,'========================================================='
+
+      stop
+
+c     ------------------------------------------------------------------
+c     Exception handling
+c     ------------------------------------------------------------------
+
+ 991  write(*,*) '*** ERROR: all start points outside the data domain'
+      call exit(1)
+      
+ 992  write(*,*) '*** ERROR: close arrays on files (prog. closear)'
+      call exit(1)
+
+ 993  write(*,*) '*** ERROR: problems with array size'
+      call exit(1)
+
+      end 
+
+
+c     *******************************************************************
+c     * Time step 
+c     *******************************************************************
+
+C     Time-step from (x0,y0,p0) to (x1,y1,p1)
+C
+C     (x0,y0,p0) input	coordinates (long,lat,p) for starting point
+C     (x1,y1,p1) output	coordinates (long,lat,p) for end point
+C     deltat	 input	timestep in seconds
+C     numit	 input	number of iterations
+C     jump	 input  flag (=1 trajectories don't enter the ground)
+C     left	 output	flag (=1 if trajectory leaves data domain)
+
+c     -------------------------------------------------------------------
+c     Iterative Euler time step
+c     -------------------------------------------------------------------
+
+      subroutine euler(x1,y1,p1,left,x0,y0,p0,reltpos0,reltpos1,
+     >                 deltat,numit,jump,mdv,wfactor,fbflag,
+     >		           zuv,zw,zb,uut0,uut1,vvt0,vvt1,wwt0,wwt1,
+     >                 xmin,ymin,dx,dy,per,hem,nx,ny,nz,
+     >                 fflag,lat_fixed,balloon)
+
+      implicit none
+
+c     Declaration of subroutine parameters
+      integer      nx,ny,nz
+      real         x1,y1,p1
+      integer      left
+      real	       x0,y0,p0
+      real         reltpos0,reltpos1
+      real   	   deltat
+      integer      numit
+      integer      jump
+      real         wfactor
+      integer      fbflag
+      real     	   zb(nx*ny)
+      real         uut0(nx*ny*nz),uut1(nx*ny*nz)
+      real 	       vvt0(nx*ny*nz),vvt1(nx*ny*nz)
+      real         wwt0(nx*ny*nz),wwt1(nx*ny*nz)
+      real         zuv(nx*ny*nz),zw(nx*ny*nz)
+      real         xmin,ymin,dx,dy
+      real         per
+      integer      hem
+      real         mdv
+      integer      fflag
+      real         lat_fixed
+      real         balloon
+
+c     Numerical and physical constants
+      real         deltay
+      parameter    (deltay=1.112E5)  ! Distance in m between 2 lat circles
+      real         pi                       
+      parameter    (pi=3.1415927)    ! Pi
+
+c     Test flag
+      integer      test
+      parameter    (test=0)
+      integer      maxindstep
+      parameter    (maxindstep=5.)
+
+c     Auxiliary variables
+      real         xmax,ymax
+      real	       xind,yind,pind
+      real	       u0,v0,w0,u1,v1,w1,u,v,w,sp
+      integer	   icount
+      character    ch
+      real         xind0,yind0,zind0,xind1,yind1,zind1
+
+c     Externals    
+      real         int_index4
+      external     int_index4
+
+c     Reset the flag for domain-leaving
+      left=0
+
+c     Set the esat-north bounray of the domain
+      xmax = xmin+real(nx-1)*dx
+      ymax = ymin+real(ny-1)*dy
+
+C     Interpolate wind fields to starting position (x0,y0,p0)
+      call get_index4 (xind,yind,pind,x0,y0,p0,reltpos0,
+     >                 zuv,zuv,zb,zb,3,nx,ny,nz,xmin,ymin,dx,dy,mdv)
+      u0 = int_index4(uut0,uut1,nx,ny,nz,xind,yind,pind,reltpos0,mdv)
+      v0 = int_index4(vvt0,vvt1,nx,ny,nz,xind,yind,pind,reltpos0,mdv)
+
+      call get_index4 (xind,yind,pind,x0,y0,p0,reltpos0,
+     >                 zw,zw,zb,zb,3,nx,ny,nz,xmin,ymin,dx,dy,mdv)
+      w0 = int_index4(wwt0,wwt1,nx,ny,nz,xind,yind,pind,reltpos0,mdv)
+
+c     In testmode: remember the indices at starting position
+      if ( test.eq.1 ) then
+           zind0 = pind
+           xind0 = xind
+           yind0 = yind
+      endif
+
+c     Force the near-surface wind to zero
+      if (pind.lt.1.) w0=w0*pind
+
+C     For first iteration take ending position equal to starting position
+      x1=x0
+      y1=y0
+      p1=p0
+
+C     Iterative calculation of new position
+      do icount=1,numit
+
+C        Calculate new winds for advection
+         call get_index4 (xind,yind,pind,x1,y1,p1,reltpos1,
+     >                    zuv,zuv,zb,zb,3,nx,ny,nz,xmin,ymin,dx,dy,mdv)
+         u1 = int_index4(uut0,uut1,nx,ny,nz,xind,yind,pind,reltpos1,mdv)
+         v1 = int_index4(vvt0,vvt1,nx,ny,nz,xind,yind,pind,reltpos1,mdv)
+
+         call get_index4 (xind,yind,pind,x1,y1,p1,reltpos1,
+     >                    zw,zw,zb,zb,3,nx,ny,nz,xmin,ymin,dx,dy,mdv)
+         w1 = int_index4(wwt0,wwt1,nx,ny,nz,xind,yind,pind,reltpos1,mdv)
+
+c        Force the near-surface wind to zero
+         if (pind.lt.1.) w1=w1*pind
+ 
+c        Get the new velocity in between
+         u=(u0+u1)/2.
+         v=(v0+v1)/2.
+         w=(w0+w1)/2. + balloon
+ 
+C        Calculate new positions (fplane or normal)
+         if ( fflag.eq.1 ) then
+            x1 = x0 + fbflag*u*deltat/(deltay*cos(lat_fixed*pi/180.))
+            y1 = y0 + fbflag*v*deltat/deltay
+            p1 = p0 + fbflag*wfactor*w*deltat
+         else
+            x1 = x0 + fbflag*u*deltat/(deltay*cos(y0*pi/180.))
+            y1 = y0 + fbflag*v*deltat/deltay
+            p1 = p0 + fbflag*wfactor*w*deltat
+         endif
+
+c       Handle pole problems (crossing and near pole trajectory)
+        if ((hem.eq.1).and.(y1.gt.90.)) then
+          y1=180.-y1
+          x1=x1+per/2.
+        endif
+        if ((hem.eq.1).and.(y1.lt.-90.)) then
+          y1=-180.-y1
+          x1=x1+per/2.
+        endif
+        if (y1.gt.89.99) then
+           y1=89.99
+        endif
+
+c       Handle crossings of the dateline
+        if ((hem.eq.1).and.(x1.gt.xmin+per-dx)) then
+           x1=xmin+amod(x1-xmin+dx,per)
+        endif
+        if ((hem.eq.1).and.(x1.lt.xmin)) then
+           x1=xmin+per+amod(x1-xmin-dx,per)
+        endif
+
+C       Interpolate surface height to actual position
+        call get_index4 (xind,yind,pind,x1,y1,0.,reltpos1,
+     >                   zuv,zuv,zb,zb,3,
+     >                   nx,ny,nz,xmin,ymin,dx,dy,mdv)
+        sp = int_index4 (zb,zb,nx,ny,1,xind,yind,1.,reltpos1,mdv)
+
+c       Handle trajectories which cross the lower boundary (jump flag)
+        if ((jump.eq.1).and.(p1.lt.sp)) p1=sp+10.
+ 
+C       Check if trajectory leaves data domain
+        if ( ( (hem.eq.0).and.(x1.lt.xmin)    ).or.
+     >       ( (hem.eq.0).and.(x1.gt.xmax-dx) ).or.
+     >         (y1.lt.ymin).or.(y1.gt.ymax).or.(p1.lt.sp) )
+     >  then
+          left=1
+          goto 100
+        endif
+
+      enddo
+
+c     In test mode, get the indices at the final position
+      if ( test.eq.1 ) then
+         call get_index4 (xind,yind,pind,x1,y1,p1,reltpos1,
+     >                    zuv,zuv,zb,zb,3,nx,ny,nz,xmin,ymin,dx,dy,mdv)
+         xind1 = xind
+         yind1 = yind
+         call get_index4 (xind,yind,pind,x1,y1,p1,reltpos1,
+     >                    zw,zw,zb,zb,3,nx,ny,nz,xmin,ymin,dx,dy,mdv)
+         zind1 = pind
+
+         if ( ( abs(xind1-xind0).gt.maxindstep ).or.
+     >        ( abs(yind1-yind0).gt.maxindstep ).or.
+     >        ( abs(zind1-zind0).gt.maxindstep ) )
+     >   then
+             print*
+             print*,' ERROR: Index step too large : convergence problem'
+             print*
+             print*,'xind : ',xind0,' -> ',xind1,' : ',abs(xind1-xind0)
+             print*,'yind : ',yind0,' -> ',yind1,' : ',abs(yind1-yind0)
+             print*,'zind : ',zind0,' -> ',zind1,' : ',abs(zind1-zind0)
+             print*
+         endif
+
+      endif
+
+c     Exit point for subroutine
+ 100  continue
+
+      return
+
+      end
+

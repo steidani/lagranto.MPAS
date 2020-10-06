@@ -1,0 +1,241 @@
+c     ------------------------------------------------------------
+c     Open input file
+c     ------------------------------------------------------------
+
+      subroutine input_open (fid,filename)
+
+      use netcdf
+      implicit none
+
+c     Declaration of subroutine parameters
+      integer       fid              ! File identifier
+      character*180 filename         ! Filename
+
+c     Declaration of auxiliary variables
+      integer      ierr
+
+c     Open netcdf file
+      ierr = NF90_OPEN(TRIM(filename),nf90_nowrite, fid)
+      IF ( ierr /= nf90_NoErr ) PRINT *,NF90_STRERROR(ierr)
+
+      end
+
+
+c     ------------------------------------------------------------
+c     Read information about the grid
+c     ------------------------------------------------------------
+      
+      subroutine input_grid 
+     >             (cstfile,xmin,xmax,ymin,ymax,dx,dy,nx,ny,
+     >              pollon,pollat,polgam,z3,zb,nz,gridonly)
+
+      use netcdf
+      implicit none
+
+c     Declaration of subroutine parameters 
+      integer      fid                  ! File identifier
+      real         xmin,xmax,ymin,ymax  ! Domain size
+      real         dx,dy                ! Horizontal resolution
+      integer      nx,ny,nz             ! Grid dimensions
+      real         pollon,pollat,polgam ! Longitude and latitude of pole
+      real         z3(nx,ny,nz)         ! Staggered levels
+      real         zb(nx,ny)            ! Surface pressure
+      character*80 cstfile
+      integer      gridonly  
+      
+c     Numerical and physical parameters
+      real          eps                ! Numerical epsilon
+      parameter    (eps=0.001)
+
+c     Auxiliary variables
+      integer      ierr       
+      integer      i,j,k
+      real         lat(2000)
+      real         lon(2000)
+      integer      varid
+      integer      dimid
+      character*80 varname,dimname
+      real         tmp1(nz+1,nx,ny)
+      real         tmp0(nz  ,nx,ny)
+
+c     Open netcdf file
+      ierr = NF90_OPEN(TRIM(cstfile),nf90_nowrite, fid)
+      IF ( ierr /= nf90_NoErr ) PRINT *,NF90_STRERROR(ierr)
+      
+c     Get longitudes
+      dimname = 'longitude'
+      ierr = nf90_inq_dimid(fid,dimname, dimid)
+      IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+      ierr = nf90_inquire_dimension(fid, dimid, len = nx)
+      IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+      varname = 'longitude'
+      ierr = NF90_INQ_VARID(fid,varname,varid)
+      IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+      ierr = NF90_GET_VAR(fid,varid,lon(1:nx))
+      IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+      xmin = lon(1)
+      xmax = lon(nx)
+
+c     Get latitudes
+      dimname = 'latitude'
+      ierr = nf90_inq_dimid(fid,dimname, dimid)
+      IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+      ierr = nf90_inquire_dimension(fid, dimid, len = ny)
+      IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+      varname = 'latitude'
+      ierr = NF90_INQ_VARID(fid,varname,varid)
+      IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+      ierr = NF90_GET_VAR(fid,varid,lat(1:ny))
+      IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+      ymin = lat(1)
+      ymax = lat(ny)
+
+c     Get vertical grid size
+      dimname = 'nVertLevelsP1'
+      ierr = nf90_inq_dimid(fid,dimname, dimid)
+      IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+      ierr = nf90_inquire_dimension(fid, dimid, len = nz)
+      IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+      nz = nz - 1
+
+c     Set projection parameters
+      pollon = 0.
+      pollat = 90.
+      polgam = 0.
+      
+c     Get horizontal resolution      
+      dx = ( xmax - xmin ) / real(nx-1) 
+      dy = ( ymax - ymin ) / real(ny-1) 
+
+c     Do not read any data if fid<0 - only return dimensions and grid info
+      if ( gridonly.eq.1 ) goto 100
+
+c     Read 3D grid
+      print*,' R zgrid <- ',trim(cstfile)
+      varname = 'zgrid'
+      ierr = NF90_INQ_VARID(fid,varname,varid)
+      IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+      ierr = NF90_GET_VAR(fid,varid,tmp1)
+      IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+      
+c     Set the topography - lowest level of z3
+      do i=1,nx
+        do j=1,ny
+           zb(i,j) = tmp1(1,i,j)
+        enddo
+      enddo
+
+c     Get grid points heights at U,V grids
+      do i=1,nx
+        do j=1,ny
+          do k=1,nz
+             z3(i,j,k) = 0.5 * ( tmp1(k,i,j) + tmp1(k+1,i,j) )
+          enddo
+        enddo
+      enddo
+
+c     Exit point
+ 100  continue
+      
+c     Close the constants file
+      ierr = NF90_CLOSE(fid)
+      IF( ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+
+      end
+
+c     ------------------------------------------------------------
+c     Read wind information
+c     ------------------------------------------------------------
+
+      subroutine input_wind (fid,fieldname,field,mdv,
+     >                       xmin,xmax,ymin,ymax,dx,dy,nx,ny,nz)
+
+      use netcdf
+      implicit none
+
+c     Declaration of variables and parameters
+      integer      fid                 ! File identifier
+      character*80 fieldname           ! Name of the wind field
+      integer      nx,ny,nz            ! Dimension of fields
+      real         field(nx,ny,nz)     ! 3d wind field
+      real         mdv                 ! Missing data flag
+      real         xmin,xmax,ymin,ymax ! Domain size
+      real         dx,dy               ! Horizontal resolution
+
+c     Numerical and physical parameters
+      real        eps                 ! Numerical epsilon
+      parameter  (eps=0.001)
+
+c     Auxiliary variables
+      integer      i,j,k
+      real         tmp1(nz+1,nx,ny)
+      real         tmp0(nz  ,nx,ny)
+      integer      ierr
+      integer      destag
+      character*80 varname
+      integer      varid
+
+c     Set variable name on netCDF and vertical destaggering
+      if ( fieldname.eq.'U' ) then
+         varname = 'uReconstructZonal'
+         destag  = 0
+      elseif ( fieldname.eq.'V' ) then
+         varname = 'uReconstructMeridional'
+         destag  = 0
+      elseif ( fieldname.eq.'W' ) then
+         varname = 'w'
+         destag  = 1
+      else
+         varname = fieldname
+         destag  = 0
+      endif
+
+c     Read data
+      if ( destag.eq. 0 ) then
+        ierr = NF90_INQ_VARID(fid,varname,varid)
+        IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+        ierr = NF90_GET_VAR(fid,varid,tmp0)
+        IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+        do i=1,nx
+           do j=1,ny
+             do k=1,nz
+                field(i,j,k) = tmp0(k,i,j)
+             enddo
+           enddo
+        enddo
+      else
+        ierr = NF90_INQ_VARID(fid,varname,varid)
+        IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+        ierr = NF90_GET_VAR(fid,varid,tmp1)
+        IF (ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+        do i=1,nx
+           do j=1,ny
+             do k=1,nz
+                field(i,j,k) = 0.5 * ( tmp1(k,i,j) + tmp1(k+1,i,j) )
+             enddo
+           enddo
+        enddo
+      endif
+      
+      end
+
+c     ------------------------------------------------------------
+c     Close input file
+c     ------------------------------------------------------------
+
+      subroutine input_close(fid)
+
+      use netcdf
+      implicit none
+
+c     Declaration of subroutine parameters
+      integer fid
+
+c     Auxiliary variables
+      integer ierr
+
+c     Close file
+      ierr = NF90_CLOSE(fid)
+      IF( ierr /= nf90_NoErr) PRINT *,NF90_STRERROR(ierr)
+ 
+      end
