@@ -37,11 +37,11 @@ containing 4 timesteps (every 6 hour: 00, 06, 12, 18).
    
 Needed fields are:   
 
- - zonal wind (uzonal, in m/s)   
- - meridional wind (umeridional, in m/s)   
- - vertical wind (w, in m/s)   
- - geometric height (height, in m)   
- - additional fields (temperature, specific humidity, ..) to be traced along the trajectories.   
+- zonal wind (uzonal, in m/s)   
+- meridional wind (umeridional, in m/s)   
+- vertical wind (w, in m/s)   
+- geometric height (height, in m)   
+- additional fields (temperature, specific humidity, ..) to be traced along the trajectories.   
 
 2 Starting Position
 --------------------
@@ -65,7 +65,7 @@ Meteorological fields (in addition to time, lon, lat, z) to be traced are listed
 .. code:: bash
 
    > more example/tracevars
-   temperature 1. P
+   temperature    1.    P
   
 The different columns are: name, scaling factor, location of field (P = Primary). In this case, P is latlon.current.YYYY-MM-DD_00:00:00.nc*. 
 
