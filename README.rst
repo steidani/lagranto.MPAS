@@ -115,13 +115,13 @@ The staring positions are taken from *startf_z* and the output is written to *ls
 The shell script *script/run_lagranto.sh* provides an example on calculating backward trajectories starting from blocking anticyclones.   
 Starting position are taken from startfiles named *startf_YYYYMMDD_HH_FLAG*. These startfiles are created using the output "FLAG" from the atmospheric blocking tracking index `ConTrack <https://github.com/steidani/ConTrack>`_.
 
-5 Analysis and Platting of Trajectories
+5 Analysis and Plotting of Trajectories
 ---------------------------------------
 
 A Python library to work with trajectories can be found here: `https://lagranto.readthedocs.io/en/latest/ <https://lagranto.readthedocs.io/en/latest/>`_.
 
 .. image:: example/example_forward.png
-   :width: 20 px
+   :width: 15 px
    :align: center
 
 
