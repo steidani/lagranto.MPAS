@@ -14,8 +14,7 @@ For more information see `http://www.lagranto.ethz.ch <http://www.lagranto.ethz.
 Installation
 ============
 
-Download
----------
+Download:
 
 .. code:: bash
 
@@ -74,7 +73,7 @@ Meteorological fields (in addition to time, lon, lat, z) to be traced are listed
    > more example/tracevars
    temperature    1.    P
   
-The different columns are: name, scaling factor, location of field (P = Primary). In this case, P is latlon.current.YYYY-MM-DD_00:00:00.nc*. 
+The different columns are: name, scaling factor, location of field (P = Primary). In this case, P is *latlon.current.YYYY-MM-DD_00:00:00.nc*. 
 
 4 Trajectory Calculation
 -------------------------
@@ -85,7 +84,7 @@ In this example, the trajectories are calculated 3 days (72) forward in time, st
 
    > caltra startf_z 72 lsl_forward.1 -ref 19881228_1800 -o 360
 
-The staring positions are taken from *startf_z* and the output is written to *lsl_forward.1*. All input files (MPAS, startf, tracevars) are expected in the directory where Lagranto was called (see *example/run_lagranto.sh*.
+The staring positions are taken from *startf_z* and the output is written to *lsl_forward.1*. All input files (*netCDF, startf, tracevars*) are expected in the directory where Lagranto was called (see *example/run_lagranto.sh*).
 
 .. code:: bash
 
@@ -114,7 +113,7 @@ The staring positions are taken from *startf_z* and the output is written to *ls
 ------------------------------------------
 
 The shell script *script/run_lagranto.sh* provides an example on calculating backward trajectories starting from blocking anticyclones.   
-Starting position are taken from startfiles named *startf_YYYYMMDD_HH_FLAG*. These startfiles are created using the output "FLAG" from the Atmospheric blocking tracking index `ConTrack <https://github.com/steidani/ConTrack>`_.
+Starting position are taken from startfiles named *startf_YYYYMMDD_HH_FLAG*. These startfiles are created using the output "FLAG" from the atmospheric blocking tracking index `ConTrack <https://github.com/steidani/ConTrack>`_.
 
 5 Analysis and Platting of Trajectories
 ---------------------------------------
@@ -122,7 +121,7 @@ Starting position are taken from startfiles named *startf_YYYYMMDD_HH_FLAG*. The
 A Python library to work with trajectories can be found here: `https://lagranto.readthedocs.io/en/latest/ <https://lagranto.readthedocs.io/en/latest/>`_.
 
 .. image:: example/example_forward.png
-   :width: 30 px
+   :width: 20 px
    :align: center
 
 
