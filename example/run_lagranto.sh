@@ -10,9 +10,9 @@ echo ${LAGRANTO}
 pdir=/net/thermo/atmosdyn/steidani/mpas/data/cdf
 
 #=======
-# create link to files
+# create link to MPAS files
 echo " *********************** get files ***********************"	
-ln -sf ${pdir}/* .
+ln -sf ${pdir}/latlon.current* .
 
 #create tracevars file
 cat > tracevars << EOF

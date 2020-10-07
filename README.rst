@@ -14,6 +14,13 @@ For more information see `http://www.lagranto.ethz.ch <http://www.lagranto.ethz.
 Installation
 ============
 
+Download
+---------
+
+.. code:: bash
+
+   git clone https://github.com/steidani/lagranto.MPAS.git /path/to/local/lagranto.mpas
+
 Using install.csh
 -----------------
 
@@ -23,7 +30,7 @@ Compiling the Lagranto code on a Linux platform:
 
    >./code/install.csh [lib|core|all|clean|test]
 
-Fortran compiler *PGI* is used.
+Fortran compiler PGI is used.
 
 =========
 Tutorial
@@ -78,13 +85,13 @@ In this example, the trajectories are calculated 3 days (72) forward in time, st
 
    > caltra startf_z 72 lsl_forward.1 -ref 19881228_1800 -o 360
 
-The staring positions are taken from *startf_z* and the output is written to *lsl_forward.1*.
+The staring positions are taken from *startf_z* and the output is written to *lsl_forward.1*. All input files (MPAS, startf, tracevars) are expected in the directory where Lagranto was called (see *example/run_lagranto.sh*.
 
 .. code:: bash
 
    > more example/lsl_forward.1
   Reference date 19881228_1800 / Time range    4320 min
- 
+   
   time       lon      lat     z temperatu
   ------------------------------------------
  
