@@ -121,7 +121,7 @@ Starting position are taken from startfiles named *startf_YYYYMMDD_HH_FLAG*. The
 A Python library to work with trajectories can be found here: `https://lagranto.readthedocs.io/en/latest/ <https://lagranto.readthedocs.io/en/latest/>`_.
 
 .. image:: example/example_forward.png
-   :width: 15 px
+   :width: 60%
    :align: center
 
 
